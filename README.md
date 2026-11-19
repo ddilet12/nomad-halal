@@ -36,6 +36,15 @@ npm run dev
 В `supabase/config.toml` включён TOTP и отключены сервисы, которые MVP не использует
 (realtime, storage, studio, analytics, edge functions).
 
+## Облачный стенд
+
+- **Vercel:** проект `nomad-halal` (команда «adlet's projects»), регион функций `fra1`.
+  Деплоится из этого репозитория; переменные `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY` заданы в проекте.
+- **Supabase:** проект `nomad-halal` (`zcliidiszgytpctupepl`, Франкфурт). Применены все миграции из
+  `supabase/migrations` и демо-данные. Пароль демо-пользователей в облаке отличается от локального
+  `demo12345` и в репозиторий не записан.
+- Новые миграции применяются к облаку отдельно (Supabase CLI `supabase db push` или SQL-редактор).
+
 ## Автотесты
 
 Критерии приёмки из раздела 9 плана проверяются на уровне базы. Тесты идут на чистом Postgres 16+
