@@ -10,6 +10,19 @@ language sql as $$ select pg_advisory_xact_lock(hashtextextended('wh:' || p_ware
 create or replace function app.lock_customer(p_customer uuid) returns void
 language sql as $$ select pg_advisory_xact_lock(hashtextextended('cu:' || p_customer::text, 0)); $$;
 
+-- Форматирование чисел для понятных сообщений: 85 000 ₸, 12,5
+create or replace function app.fmt_money(v numeric) returns text
+language sql immutable as $$
+  select case when v is null then '—' else
+    (case when v < 0 then '−' else '' end)
+    || regexp_replace(trunc(abs(v))::text, '(\d)(?=(\d{3})+$)', '\1 ', 'g')
+    || case when abs(v) <> trunc(abs(v)) then ',' || lpad((round(abs(v) * 100) % 100)::text, 2, '0') else '' end
+    || ' ₸' end;
+$$;
+
+create or replace function app.fmt_qty(v numeric) returns text
+language sql immutable as $$ select replace(trim_scale(v)::text, '.', ','); $$;
+
 create or replace function app.stock_qty(p_warehouse uuid, p_product uuid) returns numeric
 language sql stable as $$
   select coalesce(sum(qty), 0) from public.stock_movements
@@ -31,7 +44,7 @@ declare v_free numeric := app.stock_qty(p_warehouse, p_product) - app.reserved_q
 begin
   if v_free < p_qty then
     raise exception 'Недостаточно свободного остатка: % — нужно %, доступно %',
-      app.product_label(p_product), p_qty, greatest(v_free, 0) using errcode = 'P0001';
+      app.product_label(p_product), app.fmt_qty(p_qty), app.fmt_qty(greatest(v_free, 0)) using errcode = 'P0001';
   end if;
 end $$;
 
@@ -74,7 +87,7 @@ begin
 
   if v_left > 0 then
     raise exception 'Недостаточно остатка на складе: % — не хватает %',
-      app.product_label(p_product), v_left using errcode = 'P0001';
+      app.product_label(p_product), app.fmt_qty(v_left) using errcode = 'P0001';
   end if;
 end $$;
 
@@ -162,14 +175,14 @@ begin
    where customer_id = c.id and open_amount > 0 and due_date < p_doc.doc_date;
 
   if v_overdue > 0 then
-    raise exception 'Отгрузка заблокирована: у клиента «%» просроченный долг % ₸ (срок оплаты был %)',
-      c.name, v_overdue, to_char(v_overdue_since, 'DD.MM.YYYY') using errcode = 'P0001';
+    raise exception 'Отгрузка заблокирована: у клиента «%» просроченный долг % (срок оплаты был %)',
+      c.name, app.fmt_money(v_overdue), to_char(v_overdue_since, 'DD.MM.YYYY') using errcode = 'P0001';
   end if;
 
   v_balance := app.customer_balance(c.id);
   if c.credit_limit is not null and v_balance + p_total > c.credit_limit then
-    raise exception 'Отгрузка заблокирована: превышен кредитный лимит клиента «%» — лимит % ₸, текущий долг % ₸, отгрузка % ₸',
-      c.name, c.credit_limit, v_balance, p_total using errcode = 'P0001';
+    raise exception 'Отгрузка заблокирована: превышен кредитный лимит клиента «%» — лимит %, текущий долг %, отгрузка %',
+      c.name, app.fmt_money(c.credit_limit), app.fmt_money(v_balance), app.fmt_money(p_total) using errcode = 'P0001';
   end if;
 end $$;
 
@@ -389,7 +402,7 @@ begin
     end loop;
 
     if v_left > 0 then
-      raise exception 'Возврат больше отгруженного: % — лишние %', app.product_label(l.product_id), v_left
+      raise exception 'Возврат больше отгруженного: % — лишние %', app.product_label(l.product_id), app.fmt_qty(v_left)
         using errcode = 'P0001';
     end if;
 

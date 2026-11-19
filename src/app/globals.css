@@ -1,26 +1,67 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e3e6eb;
+  --text: #16191d;
+  --muted: #6a7280;
+  --primary: #0f6b4f;
+  --primary-text: #ffffff;
+  --danger: #b42318;
+  --warn: #a15c07;
+  --ok: #067647;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #0f1114;
+    --surface: #171a1f;
+    --border: #2a2f37;
+    --text: #e8eaed;
+    --muted: #9aa3af;
+    --primary: #2fae84;
+    --primary-text: #06110d;
+    --danger: #f97066;
+    --warn: #fdb022;
+    --ok: #47cd89;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer components {
+  .card { @apply rounded-xl border border-border bg-surface p-4; }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium;
+    @apply hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary { background: var(--primary); color: var(--primary-text); border-color: transparent; }
+  .btn-danger { color: var(--danger); }
+  .field { @apply flex flex-col gap-1 text-sm; }
+  .field > span { @apply text-muted; }
+  .field input, .field select, .field textarea, .input {
+    @apply rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary;
+  }
+  .table { @apply w-full text-sm border-collapse; }
+  .table th { @apply text-left font-medium text-muted border-b border-border px-2 py-2 whitespace-nowrap; }
+  .table td { @apply border-b border-border px-2 py-2 align-top; }
+  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .badge { @apply inline-block rounded-full px-2 py-0.5 text-xs font-medium border border-border; }
 }

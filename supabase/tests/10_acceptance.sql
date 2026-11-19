@@ -254,7 +254,7 @@ begin
   values ('sale', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001',
           '60000000-0000-0000-0000-000000000003') returning id into s;
   insert into document_lines (document_id, product_id, qty) values (s, '40000000-0000-0000-0000-000000000001', 1);
-  perform test.throws(format('select post_document(%L)', s), 'просроченный долг 100000',
+  perform test.throws(format('select post_document(%L)', s), 'просроченный долг 100 000 ₸',
                       'отгрузка клиенту с просрочкой блокируется с понятной причиной');
   update documents set block_override = true where id = s;
   perform test.throws(format('select post_document(%L)', s), 'только собственник или финансы',

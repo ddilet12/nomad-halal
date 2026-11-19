@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NOMAD HALAL ERP: MVP-демо
 
-## Getting Started
+Учёт склада, продаж в отсрочку, дебиторки, денег и прибыли для дистрибьютора халал-продукции
+с тремя филиалами. Реализация по документу «План MVP-демо — NOMAD HALAL ERP».
 
-First, run the development server:
+Главный принцип: **все цифры считаются из операций, а не вводятся вручную.** Остаток, долг, деньги
+и выручка меняются только проведением документа. Проведённый документ нельзя изменить или удалить,
+его можно только отменить: отмена пишет обратные движения, и всё остаётся в журнале.
+
+## Стек
+
+- **Next.js 15** (App Router) + TypeScript + Tailwind, интерфейс на русском, адаптивный.
+- **Supabase**: Postgres, Auth (email + пароль, TOTP 2FA), Row Level Security.
+- **Проведение документов в Postgres-функциях**: один документ — одна транзакция.
+- **SheetJS** для импорта и экспорта Excel.
+
+## Быстрый старт (локально)
 
 ```bash
+npm install
+npx supabase start          # поднимает Postgres, Auth, REST; применяет миграции и seed.sql
+cp .env.example .env.local  # вписать API URL и anon key из вывода `supabase status`
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Демо-пользователи из `supabase/seed.sql` (пароль у всех `demo12345`):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Email | Роль |
+|---|---|
+| owner@demo.kz | Собственник (при первом входе подключит 2FA) |
+| finance@demo.kz | Финансы (2FA) |
+| director.krg@demo.kz / director.ast@demo.kz | Директор филиала |
+| tp.krg@demo.kz / tp.ast@demo.kz | Торговый представитель |
+| sklad.krg@demo.kz | Кладовщик Караганды |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+В `supabase/config.toml` включён TOTP и отключены сервисы, которые MVP не использует
+(realtime, storage, studio, analytics, edge functions).
 
-## Learn More
+## Автотесты
 
-To learn more about Next.js, take a look at the following resources:
+Критерии приёмки из раздела 9 плана проверяются на уровне базы. Тесты идут на чистом Postgres 16+
+с минимальной имитацией Supabase Auth (`supabase/tests/00_local_supabase_stub.sql`):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+PGHOST=/tmp PGPORT=5432 PGUSER=postgres npm run test:db
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Критерий | Где проверяется |
+|---|---|
+| Продажа уменьшает остаток и создаёт долг; FEFO; срок = дата + отсрочка | `10_acceptance.sql`, шаг 3 |
+| Оплата не создаёт повторную выручку | шаг 4 |
+| Возврат возвращает товар в ту же партию, сторнирует выручку, себестоимость и долг | шаг 5 |
+| Прибыль: ВП и ЧП на эталонном наборе; расход меняет ЧП, но не ВП | шаг 6 |
+| Перемещение не меняет стоимость запасов компании | шаг 7 |
+| Блокировка отгрузки по просрочке и лимиту; снять может только собственник или финансы | шаг 8 |
+| Нет доступа к запрещённым данным (ТП, чужой филиал, без 2FA) | шаг 9 |
+| Журнал; проведённое нельзя удалить или изменить; регистры не пишутся напрямую | шаг 10 |
+| Сверка импорта с итогами Excel | `11_import.sql` |
 
-## Deploy on Vercel
+## Структура базы (`supabase/migrations`)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Файл | Что внутри |
+|---|---|
+| `…01_core_schema.sql` | Справочники, документы, регистры, журнал |
+| `…02_helpers_guards_audit.sql` | Роли и область видимости, защита проведённых документов и регистров, нумерация, подстановка цены из прайса, триггеры журнала |
+| `…03_posting.sql` | `post_document`, `cancel_document`, FEFO, кредитный контроль, `create_sale_from_order`, `copy_document` |
+| `…04_rls.sql` | Политики RLS и безопасные представления без цен и себестоимости (`document_lines_view`, `stock_qty_view`, `stock_available_view`, `sales_view`) |
+| `…05_reports.sql` | Корзины просрочки, акт сверки, остатки, деньги, «скоро закончится», «истекает срок», `owner_dashboard` |
+| `…06_import.sql` | Импорт товаров, клиентов, начальных остатков и долгов с проверкой и отчётом об ошибках |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Регистры (только добавление):** `batches`, `stock_movements`, `reservations`, `ar_movements`,
+`cash_movements`, `sales_register`, `writeoff_register`. Выручка берётся из `sales_register`, поступление
+денег — из `cash_movements`, долг — из `ar_movements`. Поэтому это разные показатели, как требует ТЗ.
+
+## Решения, которые стоит подтвердить с заказчиком
+
+1. **Распределение оплат по долгам — FIFO по сроку оплаты.** Оплата и возврат гасят самый старый долг
+   клиента. Корзины просрочки и открытые долги по документам считаются из этого автоматически. Ручная
+   привязка оплаты к конкретной реализации в MVP не сделана (вопрос 6 раздела 10).
+2. **Себестоимость — по партиям** (вопрос 3). Возврат идёт в ту же партию по цене реализации.
+3. **Чистая прибыль = ВП − расходы − себестоимость списаний.** Списание — тоже потеря, поэтому оно
+   включено. Если заказчик хочет строго «ВП − расходы», это одна строка в `owner_dashboard`.
+4. **Снять блокировку отгрузки** (флаг `block_override`) может только собственник или финансы.
+5. **Кредитный лимит:** пусто — без лимита, 0 — только предоплата.
+6. Собственник и финансы **без пройденной 2FA не видят ничего**: это проверяет база, а не только интерфейс.
+   Флаг `app_settings.require_mfa_for_privileged` позволяет отключить требование на staging.
+
+## Что ещё не сделано из состава MVP
+
+- Формы создания и редактирования справочников в интерфейсе. Сейчас справочники ведутся через импорт
+  Excel (с обновлением по SKU и БИН/ИИН) и выгружаются в Excel.
+- Ввод плана продаж и управление пользователями в интерфейсе (пока только через базу).
+- Materialized views + pg_cron для тяжёлых агрегатов. Сейчас дашборд считается напрямую по регистрам,
+  на объёмах демо этого хватает.
+- Отдельный staging-проект Supabase и Vercel Preview: нужны доступы заказчика.
